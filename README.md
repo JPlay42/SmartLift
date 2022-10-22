@@ -1,4 +1,4 @@
-#Smart lift
+# Smart lift
 
 Yet another STM32Cube project
 
