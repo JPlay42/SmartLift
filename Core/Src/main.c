@@ -113,25 +113,35 @@ char check_smoke() {
 }
 
 void change_floor(unsigned char diff, GPIO_TypeDef* port, int pin, char increment /* 1 or -1 */) {
-	HAL_GPIO_WritePin(port, pin, GPIO_PIN_SET);
-	for (unsigned char i = 0; i < diff; i++) {
-		if (check_smoke()) {
-			return;
-		}
-		while (!HAL_GPIO_ReadPin(FLOOR_SENSOR_PORT, FLOOR_SENSOR_PIN));
-		current_floor += increment;
-	}
-	HAL_GPIO_WritePin(port, pin, GPIO_PIN_RESET);
+
 }
 
 void set_floor(unsigned char floor) {
 	if (floor < current_floor) {
 		unsigned char diff = current_floor - floor;
-		change_floor(diff, FLOOR_DOWN_PORT, FLOOR_DOWN_PIN, -1);
+		HAL_GPIO_WritePin(FLOOR_DOWN_PORT, FLOOR_DOWN_PIN, GPIO_PIN_SET);
+		for (unsigned char i = 0; i < diff; i++) {
+			if (check_smoke()) {
+				return;
+			}
+			lcd_print("Getting down...", sprintf("Current floor: %d", current_floor));
+			while (!HAL_GPIO_ReadPin(FLOOR_SENSOR_PORT, FLOOR_SENSOR_PIN));
+			current_floor--;
+		}
+		HAL_GPIO_WritePin(FLOOR_DOWN_PORT, FLOOR_DOWN_PIN, GPIO_PIN_RESET);
 	}
 	if (floor > current_floor) {
 		unsigned char diff = floor - current_floor;
-		change_floor(diff, FLOOR_UP_PORT, FLOOR_UP_PIN, 1);
+		HAL_GPIO_WritePin(FLOOR_UP_PORT, FLOOR_UP_PIN, GPIO_PIN_SET);
+		for (unsigned char i = 0; i < diff; i++) {
+			if (check_smoke()) {
+				return;
+			}
+			lcd_print("Getting up...", sprintf("Current floor: %d", current_floor));
+			while (!HAL_GPIO_ReadPin(FLOOR_SENSOR_PORT, FLOOR_SENSOR_PIN));
+			current_floor++;
+		}
+		HAL_GPIO_WritePin(FLOOR_UP_PORT, FLOOR_UP_PIN, GPIO_PIN_RESET);
 	}
 }
 
@@ -185,7 +195,7 @@ int main(void)
   while (1)
   {
     /* USER CODE END WHILE */
-	lcd_print("Lift is pending", "Lean the tag");
+	lcd_print("Lift is pending", sprintf("Current floor: %d", current_floor));
 	int tag_id = read_rfid(); // blocking function
 	if (check_smoke()) {
 		continue;
