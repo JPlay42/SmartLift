@@ -21,7 +21,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "pinout.h"
+#include "LCD16x2.h" // fake library
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -31,6 +32,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define ALCOHOL_TRIGGER_VALUE 128
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -41,6 +43,20 @@
 /* Private variables ---------------------------------------------------------*/
 UART_HandleTypeDef huart2;
 
+// TODO add EEPROM support
+// but now it's OK to hard-code these values
+const int users_rfid_tags[] = {
+		12345678,
+		87654321,
+		12341234,
+		43214321
+};
+const unsigned char users_floors[] = {
+		3,
+		8,
+		6,
+		5
+};
 /* USER CODE BEGIN PV */
 
 /* USER CODE END PV */
@@ -55,6 +71,38 @@ static void MX_USART2_UART_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+void lcd_print(char* top, char* bottom) {
+	LCD_Clear();
+	LCD_Set_Cursor(0, 0);
+	LCD_Write_String(top);
+	LCD_Set_Cursor(0, 1);
+	LCD_Write_String(bottom);
+}
+
+int read_rfid() {
+	return 0; // should be tag id
+}
+
+void press_lift_button(unsigned char btn) {
+	HAL_GPIO_WritePin(LIFT_BTN_PORTS[btn], LIFT_BTN_PINS[btn], GPIO_PIN_SET);
+	HAL_Delay(500);
+	HAL_GPIO_WritePin(LIFT_BTN_PORTS[btn], LIFT_BTN_PINS[btn], GPIO_PIN_RESET);
+}
+
+unsigned char get_user_floor(int tag_id) {
+	unsigned char users_amount = sizeof(users_floors) / sizeof(users_floors[0]);
+	for (int i = 0; i < users_amount; i++) {
+		if (tag_id == users_rfid_tags[i]) {
+			return users_floors[i];
+		}
+	}
+	return 0;
+}
+
+bool user_is_drunk() {
+
+}
 
 /* USER CODE END 0 */
 
@@ -88,7 +136,9 @@ int main(void)
   MX_GPIO_Init();
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
-
+  LCD_Init();
+  lcd_print("   SmartLift", "Powered by TV-12");
+  HAL_Delay(1000);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -96,6 +146,8 @@ int main(void)
   while (1)
   {
     /* USER CODE END WHILE */
+	lcd_print("Lift is pending", "Lean the tag");
+	int tag_id = read_rfid(); // blocking function
 
     /* USER CODE BEGIN 3 */
   }
