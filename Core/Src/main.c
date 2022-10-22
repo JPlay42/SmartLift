@@ -22,7 +22,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "pinout.h"
-#include "LCD16x2.h" // fake library
+#include "LCD16x2.h" // TODO replace this fake library
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -32,7 +32,6 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define ALCOHOL_TRIGGER_VALUE 128
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -42,9 +41,10 @@
 
 /* Private variables ---------------------------------------------------------*/
 UART_HandleTypeDef huart2;
+unsigned char current_floor;
 
 // TODO add EEPROM support
-// but now it's OK to hard-code these values
+// but for now it's OK to hard-code these values
 const int users_rfid_tags[] = {
 		12345678,
 		87654321,
@@ -72,6 +72,15 @@ static void MX_USART2_UART_Init(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
+void beep(char times, int delay) {
+	for (char i = 0 ; i < times; i++) {
+		HAL_GPIO_WritePin(BUZZER_PORT, BUZZER_PIN, GPIO_PIN_SET);
+		HAL_Delay(delay);
+		HAL_GPIO_WritePin(BUZZER_PORT, BUZZER_PIN, GPIO_PIN_RESET);
+		HAL_Delay(delay);
+	}
+}
+
 void lcd_print(char* top, char* bottom) {
 	LCD_Clear();
 	LCD_Set_Cursor(0, 0);
@@ -84,12 +93,6 @@ int read_rfid() {
 	return 0; // should be tag id
 }
 
-void press_lift_button(unsigned char btn) {
-	HAL_GPIO_WritePin(LIFT_BTN_PORTS[btn], LIFT_BTN_PINS[btn], GPIO_PIN_SET);
-	HAL_Delay(500);
-	HAL_GPIO_WritePin(LIFT_BTN_PORTS[btn], LIFT_BTN_PINS[btn], GPIO_PIN_RESET);
-}
-
 unsigned char get_user_floor(int tag_id) {
 	unsigned char users_amount = sizeof(users_floors) / sizeof(users_floors[0]);
 	for (int i = 0; i < users_amount; i++) {
@@ -100,8 +103,44 @@ unsigned char get_user_floor(int tag_id) {
 	return 0;
 }
 
-bool user_is_drunk() {
+char check_smoke() {
+	if (HAL_GPIO_ReadPin(CO2_SENSOR_PORT, CO2_SENSOR_PIN)) {
+		lcd_print("Smoke detected", "Find the source");
+		beep(3, 500);
+		return 1;
+	}
+	return 0;
+}
 
+void change_floor(unsigned char diff, GPIO_TypeDef* port, int pin, char increment /* 1 or -1 */) {
+	HAL_GPIO_WritePin(port, pin, GPIO_PIN_SET);
+	for (unsigned char i = 0; i < diff; i++) {
+		if (check_smoke()) {
+			return;
+		}
+		while (!HAL_GPIO_ReadPin(FLOOR_SENSOR_PORT, FLOOR_SENSOR_PIN));
+		current_floor += increment;
+	}
+	HAL_GPIO_WritePin(port, pin, GPIO_PIN_RESET);
+}
+
+void set_floor(unsigned char floor) {
+	if (floor < current_floor) {
+		unsigned char diff = current_floor - floor;
+		change_floor(diff, FLOOR_DOWN_PORT, FLOOR_DOWN_PIN, -1);
+	}
+	if (floor > current_floor) {
+		unsigned char diff = floor - current_floor;
+		change_floor(diff, FLOOR_UP_PORT, FLOOR_UP_PIN, 1);
+	}
+}
+
+void park_lift() {
+	HAL_GPIO_WritePin(FLOOR_DOWN_PORT, FLOOR_DOWN_PIN, GPIO_PIN_SET);
+	while (!HAL_GPIO_ReadPin(LOW_HEIGHT_ENDPOINT_PORT, LOW_HEIGHT_ENDPOINT_PIN));
+	HAL_GPIO_WritePin(FLOOR_DOWN_PORT, FLOOR_DOWN_PIN, GPIO_PIN_RESET);
+	current_floor = 0;
+	set_floor(1);
 }
 
 /* USER CODE END 0 */
@@ -137,8 +176,8 @@ int main(void)
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
   LCD_Init();
-  lcd_print("   SmartLift", "Powered by TV-12");
-  HAL_Delay(1000);
+  beep(1, 1000);
+  park_lift();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -148,7 +187,22 @@ int main(void)
     /* USER CODE END WHILE */
 	lcd_print("Lift is pending", "Lean the tag");
 	int tag_id = read_rfid(); // blocking function
+	if (check_smoke()) {
+		continue;
+	}
+	if (tag_id == 0) {
+		lcd_print("Can't find user", "Access denied");
+		beep(3, 150);
+		HAL_Delay(400);
+		continue;
+	}
+	if (HAL_GPIO_ReadPin(ALCO_SENSOR_PORT, ALCO_SENSOR_PIN)) {
+		lcd_print("You are drunk", "Leave the lift");
+		beep(3, 500);
+		continue;
+	}
 
+	set_floor(get_user_floor(tag_id));
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
